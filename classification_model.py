@@ -73,78 +73,54 @@ def run_fine_tuning():
     print(f"FSDP-wrapped model device (should still reflect CPU for parameters, but computations on {compute_device.type}): {next(model.parameters()).device}")
 
 
-    # --- 4. Dataset Preparation ---
     print("Loading and preparing dataset...")
-    # Using 'glue', 'mrpc' which is a relatively small dataset suitable for fine-tuning.
     raw_datasets = load_dataset("glue", "mrpc")
     
-    # CRITICAL CHANGE: Reduce max_length to save GPU memory for activations and gradients.
-    # This is often necessary for very large models on GPUs with limited VRAM.
-    max_sequence_length = 64 # Keeping reduced max_length for general memory efficiency
+    max_sequence_length = 64
     
     def tokenize_function(examples):
-        # Tokenize sentence pairs, ensuring truncation and padding for consistent length
+
         return tokenizer(examples["sentence1"], examples["sentence2"], truncation=True, padding="max_length", max_length=max_sequence_length)
         
     tokenized_datasets = raw_datasets.map(tokenize_function, batched=True)
-    # Remove original text columns and index, rename 'label' to 'labels' for Hugging Face Trainer compatibility
     tokenized_datasets = tokenized_datasets.remove_columns(["sentence1", "sentence2", "idx"])
     tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
-    tokenized_datasets.set_format("torch") # Set format to PyTorch tensors
-
-    # Create DataLoader for the training set
-    # Batch size is already set to 1, which is the minimum.
+    tokenized_datasets.set_format("torch")
     train_loader = DataLoader(tokenized_datasets["train"], batch_size=1, shuffle=True, pin_memory=False)
     print(f"DataLoader batch size set to: {train_loader.batch_size}")
     print(f"Max sequence length set to: {max_sequence_length}")
     print("Dataset prepared.")
-
-    # --- 5. Optimizer and Training Loop ---
     optimizer = optim.AdamW(model.parameters(), lr=5e-5)
     num_epochs = 3
     
     print("Starting fine-tuning with FSDP + CPU Offload (parameters on CPU)...")
-    model.train() # Set model to training mode
+    model.train()
     for epoch in range(num_epochs):
         for i, batch in enumerate(train_loader):
-            # Move each tensor in the batch to the correct computation device (GPU if available)
-            # Input data still needs to be on the device where the forward pass happens.
             batch = {k: v.to(compute_device) for k, v in batch.items()}
             
-            optimizer.zero_grad() # Clear gradients
-            outputs = model(**batch) # Forward pass (FSDP moves necessary params to GPU here)
-            loss = outputs.loss # Get the loss from model outputs
-            loss.backward() # Backward pass to compute gradients
-            optimizer.step() # Update model parameters
+            optimizer.zero_grad()
+            outputs = model(**batch)
+            loss = outputs.loss
+            loss.backward()
+            optimizer.step()
             
             if i % 10 == 0:
-                # Print loss periodically
                 print(f"Epoch: {epoch+1}/{num_epochs}, Batch: {i}, Loss: {loss.item():.4f}")
 
     print("Fine-tuning finished.")
-
-    # --- 6. Saving the Model ---
-    # Only save from rank 0 in a distributed setting
     if dist.get_rank() == 0:
         print("Saving model...")
-        # When calling state_dict() on an FSDP-wrapped model, it automatically
-        # gathers the full state dictionary from all shards (even if NO_SHARD here)
-        # and makes it available on the rank 0 process.
         full_state_dict = model.state_dict()
-        
-        # Load the state dict into a non-FSDP model instance on CPU for saving
-        # This model will be on CPU, which is desired for saving.
         cpu_model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
         cpu_model.load_state_dict(full_state_dict)
-        
-        # Save the model and tokenizer
-        save_directory = "./fine-tuned-bert-fsdp-cpu-offload" # Updated save directory name
-        os.makedirs(save_directory, exist_ok=True) # Ensure directory exists
+        save_directory = "./fine-tuned-bert-fsdp-cpu-offload"
+        os.makedirs(save_directory, exist_ok=True)
         cpu_model.save_pretrained(save_directory)
         tokenizer.save_pretrained(save_directory)
         print(f"Model saved successfully to {save_directory}.")
 
-    cleanup() # Clean up the distributed environment
+    cleanup()
 
 if __name__ == '__main__':
     run_fine_tuning()
