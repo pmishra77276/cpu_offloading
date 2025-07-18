@@ -4,6 +4,11 @@ import time
 import gc
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import psutil
+import argparse
+import os
+os.environ["FLASH_ATTENTION_FORCE_DISABLED"] = "1"
+
+
 
 # Set thread settings globally (good practice)
 torch.set_num_threads(12)
@@ -32,6 +37,7 @@ class AccelerateOffloadInference:
         print("Loading model with Accelerate device mapping...")
         if torch.cuda.is_available():
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            print("Total Memory",torch.cuda.get_device_properties(0).total_memory)
             max_gpu_memory = f"5GB" 
         else:
             max_gpu_memory = "0GB"
@@ -40,12 +46,14 @@ class AccelerateOffloadInference:
             torch_dtype=torch.bfloat16 , 
             trust_remote_code=True,
             device_map="auto",
-            max_memory={0: max_gpu_memory, "cpu": "0GB"},
+            max_memory={0: max_gpu_memory,1:"5GB", "cpu": "0GB"},
             offload_folder="/offload_nvm",
             offload_state_dict=True,
-            low_cpu_mem_usage=True
+            low_cpu_mem_usage=True,
+            attn_implementation="eager",
+            # attn_implementation="flash_attention_2"
         )
-        
+        self.model.gradient_checkpointing_enable=True
         self.model.eval()
         print("Model loaded successfully with Accelerate!")
         if hasattr(self.model, 'hf_device_map'):
@@ -78,7 +86,6 @@ class AccelerateOffloadInference:
         attention_mask = inputs.attention_mask.to(self.device)
         with torch.no_grad():
             start_time = time.time()
-            
             outputs = self.model.generate(
                 input_ids,
                 attention_mask=attention_mask,
@@ -100,7 +107,6 @@ class AccelerateOffloadInference:
             outputs[0][inputs.input_ids.shape[1]:],
             skip_special_tokens=True
         )
-        
         return response.strip(), generation_time
     
     def print_memory_usage(self):
@@ -115,6 +121,8 @@ class AccelerateOffloadInference:
 
 def main():
     USE_ACCELERATE = True
+    parser = argparse.ArgumentParser(description="Run Llama 3.1 8B inference with Llama.cpp offloading.")
+    
     
     model_name = "meta-llama/Llama-3.1-8B-Instruct"
     

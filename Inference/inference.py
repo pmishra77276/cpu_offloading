@@ -1,12 +1,20 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer,BitsAndBytesConfig
 import torch
+
 device='cuda'
-model_name="deepseek-ai/DeepSeek-R1-0528-Qwen3-8B"
+model_name="mistralai/Mistral-7B-Instruct-v0.2"
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type='nf4'
+)
 tokenizer=AutoTokenizer.from_pretrained(model_name,)
 if tokenizer.pad_token==None:
     tokenizer.pad_token=tokenizer.eos_token
 model=AutoModelForCausalLM.from_pretrained(model_name,
-                                           torch_dtype=torch.bfloat16).to(device)
+                                           torch_dtype=torch.bfloat16,
+                                           quantization_config=bnb_config).to(device)
 
 message=[
     {
