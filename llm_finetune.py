@@ -8,15 +8,14 @@ from functools import partial
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from torch.distributed.fsdp import CPUOffload
-from torch.distributed.fsdp import ShardingStrategy 
+from torch.distributed.fsdp import ShardingStrategy,BackwardPrefetch 
 from transformers import AutoTokenizer, AutoModelForCausalLM  
 from datasets import load_dataset
-
 def setup():
-    rank = 0
-    world_size = 1
+    rank = 1
+    world_size = 2
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ['MASTER_PORT'] = '12356'
 
     if torch.cuda.is_available():
         compute_device = torch.device("cuda", rank)
@@ -37,7 +36,7 @@ def cleanup():
 
 def run_fine_tuning():
     compute_device = setup()
-    model_name = "Qwen/Qwen1.5-0.5B-Chat"
+    model_name = "meta-llama/Llama-3.1-8B-Instruct"
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=False)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -60,17 +59,21 @@ def run_fine_tuning():
         transformer_auto_wrap_policy,
         transformer_layer_cls={transformer_layer_class}, 
     )
+    prefetch_policy=BackwardPrefetch.BACKWARD_PRE
     fsdp_model_args = {
         "module": model,
         "auto_wrap_policy": my_auto_wrap_policy,
         "cpu_offload": cpu_offload, 
         "sharding_strategy": ShardingStrategy.FULL_SHARD  , 
-        "device_id": compute_device
+        "device_id": compute_device,
+        "backward_prefetch":prefetch_policy
     }
 
     model = FSDP(**fsdp_model_args)
+    
     print(f"FSDP-wrapped model device (should still reflect CPU for parameters, but computations on {compute_device.type}): {next(model.parameters()).device}")
     model.gradient_checkpointing_enable()
+    # BackwardPrefetch.BACKWARD_PRE
     print("Activation Checkpointing enabled.")
     print("Loading and preparing dataset...")
     raw_datasets = load_dataset("glue", "mrpc")

@@ -2,7 +2,7 @@ import torch
 import os
 import time
 import gc
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import psutil
 import argparse
 import os
@@ -38,20 +38,28 @@ class AccelerateOffloadInference:
         if torch.cuda.is_available():
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
             print("Total Memory",torch.cuda.get_device_properties(0).total_memory)
-            max_gpu_memory = f"5GB" 
+            max_gpu_memory = f"7GB" 
         else:
             max_gpu_memory = "0GB"
+            
+        bnb_config=BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type='nf4'
+        )
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
-            torch_dtype=torch.bfloat16 , 
+            # torch_dtype=torch.bfloat16 , 
             trust_remote_code=True,
             device_map="auto",
-            max_memory={0: max_gpu_memory,1:"5GB", "cpu": "0GB"},
+            max_memory={0: "0GB" , 1: "7GB","cpu": "0GB"},
             offload_folder="/offload_nvm",
             offload_state_dict=True,
             low_cpu_mem_usage=True,
+            quantization_config=bnb_config,
             attn_implementation="eager",
-            # attn_implementation="flash_attention_2"
+            # attn_implementation="eager"
         )
         self.model.gradient_checkpointing_enable=True
         self.model.eval()
