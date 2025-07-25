@@ -2,7 +2,7 @@ import torch
 import os
 import time
 import gc
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig,TextStreamer
 import psutil
 import argparse
 import os
@@ -11,14 +11,18 @@ os.environ["FLASH_ATTENTION_FORCE_DISABLED"] = "1"
 
 
 # Set thread settings globally (good practice)
-torch.set_num_threads(12)
-torch.set_num_interop_threads(4)
+torch.set_num_threads(6)
+torch.set_num_interop_threads(3)
 # Alternative: Using Accelerate library for more efficient offloading
 class AccelerateOffloadInference:
-    def __init__(self, model_name: str, max_new_tokens: int = 100, temperature: float = 0.7):
+    def __init__(self, nvme_path,max_gpu1_memory,max_gpu2_memory,max_cpu_memory,model_name: str,max_new_tokens: int = 100, temperature: float = 0.7):
         self.model_name = model_name
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
+        self.nvme_path=nvme_path
+        self.max_gpu1_memory=max_gpu1_memory
+        self.max_gpu2_memory=max_gpu2_memory
+        self.max_cpu_memory=max_cpu_memory
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         self.tokenizer = None
@@ -41,24 +45,25 @@ class AccelerateOffloadInference:
             max_gpu_memory = f"7GB" 
         else:
             max_gpu_memory = "0GB"
-            
+        self.text_streamer=TextStreamer(self.tokenizer,skip_prompt=True,skip_special_tokens=True)
         bnb_config=BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type='nf4'
+            bnb_4bit_quant_type='nf4',
+            # llm_int8_enable_fp32_cpu_offload=True
         )
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             # torch_dtype=torch.bfloat16 , 
             trust_remote_code=True,
             device_map="auto",
-            max_memory={0: "0GB" , 1: "7GB","cpu": "0GB"},
-            offload_folder="/offload_nvm",
+            max_memory={0: self.max_gpu1_memory,"cpu": self.max_cpu_memory},
+            offload_folder=self.nvme_path,
             offload_state_dict=True,
             low_cpu_mem_usage=True,
             quantization_config=bnb_config,
-            attn_implementation="eager",
+            attn_implementation="sdpa",
             # attn_implementation="eager"
         )
         self.model.gradient_checkpointing_enable=True
@@ -96,6 +101,7 @@ class AccelerateOffloadInference:
             start_time = time.time()
             outputs = self.model.generate(
                 input_ids,
+                streamer=self.text_streamer,
                 attention_mask=attention_mask,
                 max_new_tokens=self.max_new_tokens,
                 temperature=self.temperature,
@@ -130,27 +136,44 @@ class AccelerateOffloadInference:
 def main():
     USE_ACCELERATE = True
     parser = argparse.ArgumentParser(description="Run Llama 3.1 8B inference with Llama.cpp offloading.")
+    parser.add_argument("--model",type=str,default="meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--max_gpu1_memory",type=str,default="7GB")
+    parser.add_argument("--max_gpu2_memory",type=str,default="0GB")
+    parser.add_argument("--max_cpu_memory",type=str,default='0GB')
+    parser.add_argument("--nvme_path",type=str,default="/offload_nvm")
+    parser.add_argument("--max_new_tokens",type=int,default=2048)
+    args = parser.parse_args()
+    model_name = args.model
+    max_gpu1_memory=args.max_gpu1_memory
+    max_gpu2_memory=args.max_gpu2_memory
+    max_cpu_memory=args.max_cpu_memory
+    nvme_path=args.nvme_path
     
-    
-    model_name = "meta-llama/Llama-3.1-8B-Instruct"
+    max_new_tokens=args.max_new_tokens
     
     if USE_ACCELERATE:
         print("Using Accelerate library for smart offloading (including NVMe)...")
         inference = AccelerateOffloadInference(
+            nvme_path=nvme_path,
+            max_gpu1_memory=max_gpu1_memory,
+            max_gpu2_memory=max_gpu2_memory,
+            max_cpu_memory=max_cpu_memory,
             model_name=model_name,
-            max_new_tokens=100,
+            max_new_tokens=max_new_tokens,
             temperature=0.7
         )
     try:
         inference.load_model()
         print("\nMemory usage after loading:")
         inference.print_memory_usage()
-        prompts = [
-            "What is artificial intelligence?",
-            "Explain machine learning in simple terms.",
-            "Write a short story about a robot.",
-        ]
-        
+        # prompts = [
+        #     "What is artificial intelligence?",
+        #     "Explain machine learning in simple terms.",
+        #     "Write a short story about a robot.",
+        # ]
+        prompts=[]
+        inp=input("What is your query ::")
+        prompts.append(inp)
         print("\n" + "="*60)
         print("Starting inference with smart offloading...")
         print("="*60)
@@ -161,7 +184,7 @@ def main():
             
             response, gen_time = inference.generate_response(prompt)
             
-            print(f"Response: {response}")
+            # print(f"Response: {response}")
             print(f"Generation time: {gen_time:.2f} seconds")
             print("\nMemory usage after generation:")
             inference.print_memory_usage()
