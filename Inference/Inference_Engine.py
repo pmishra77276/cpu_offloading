@@ -7,13 +7,8 @@ import psutil
 import argparse
 import os
 os.environ["FLASH_ATTENTION_FORCE_DISABLED"] = "1"
-
-
-
-# Set thread settings globally (good practice)
 torch.set_num_threads(6)
 torch.set_num_interop_threads(3)
-# Alternative: Using Accelerate library for more efficient offloading
 class AccelerateOffloadInference:
     def __init__(self, nvme_path,max_gpu1_memory,max_gpu2_memory,max_cpu_memory,model_name: str,max_new_tokens: int = 100, temperature: float = 0.7):
         self.model_name = model_name
@@ -47,11 +42,11 @@ class AccelerateOffloadInference:
             max_gpu_memory = "0GB"
         self.text_streamer=TextStreamer(self.tokenizer,skip_prompt=True,skip_special_tokens=True)
         bnb_config=BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type='nf4',
-            # llm_int8_enable_fp32_cpu_offload=True
+            load_in_8bit=True,
+            # bnb_4bit_compute_dtype=torch.bfloat16,
+            # bnb_4bit_use_double_quant=True,
+            bnb_8bit_quant_type='nf4',
+            llm_int8_enable_fp32_cpu_offload=True
         )
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
