@@ -1,0 +1,3 @@
+[submodule "Self/Inference"]
+	path = Self/Inference
+	url = https://github.com/pmishra77276/cpu_offloading
