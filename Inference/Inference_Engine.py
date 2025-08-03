@@ -57,7 +57,7 @@ class AccelerateOffloadInference:
             offload_folder=self.nvme_path,
             offload_state_dict=True,
             low_cpu_mem_usage=True,
-            quantization_config=bnb_config,
+            # quantization_config=bnb_config,
             attn_implementation="sdpa",
             # attn_implementation="eager"
         )
@@ -84,7 +84,8 @@ class AccelerateOffloadInference:
             }
         ]
         inputs = self.tokenizer(
-            self.tokenizer.apply_chat_template(message,tokenize=False),
+            # self.tokenizer.apply_chat_template(message,tokenize=False),
+            prompt,
             return_tensors="pt",
             truncation=True,
             max_length=2048,
