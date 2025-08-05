@@ -50,7 +50,7 @@ class AccelerateOffloadInference:
         )
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
-            # torch_dtype=torch.bfloat16 , 
+            torch_dtype=torch.bfloat16 , 
             trust_remote_code=True,
             device_map="auto",
             max_memory={0: self.max_gpu1_memory,"cpu": self.max_cpu_memory},
@@ -132,7 +132,7 @@ class AccelerateOffloadInference:
 def main():
     USE_ACCELERATE = True
     parser = argparse.ArgumentParser(description="Run Llama 3.1 8B inference with Llama.cpp offloading.")
-    parser.add_argument("--model",type=str,default="meta-llama/Llama-3.1-8B-Instruct")
+    parser.add_argument("--model",type=str,default="meta-llama/Llama-3.2-1B")
     parser.add_argument("--max_gpu1_memory",type=str,default="7GB")
     parser.add_argument("--max_gpu2_memory",type=str,default="0GB")
     parser.add_argument("--max_cpu_memory",type=str,default='0GB')
