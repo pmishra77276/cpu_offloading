@@ -58,7 +58,8 @@ class AccelerateOffloadInference:
             offload_state_dict=True,
             low_cpu_mem_usage=True,
             # quantization_config=bnb_config,
-            attn_implementation="sdpa",
+            # attn_implementation="sdpa",
+            use_cache=True
             # attn_implementation="eager"
         )
         self.model.gradient_checkpointing_enable=True
@@ -105,8 +106,9 @@ class AccelerateOffloadInference:
                 top_p=top_p,
                 top_k=top_k,
                 pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                use_cache=True
+                eos_token_id=None
+                # eos_token_id=self.tokenizer.eos_token_id,
+                # use_cache=True
             )
             
             generation_time = time.time() - start_time
@@ -132,7 +134,7 @@ class AccelerateOffloadInference:
 def main():
     USE_ACCELERATE = True
     parser = argparse.ArgumentParser(description="Run Llama 3.1 8B inference with Llama.cpp offloading.")
-    parser.add_argument("--model",type=str,default="meta-llama/Llama-3.2-1B")
+    parser.add_argument("--model",type=str,default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--max_gpu1_memory",type=str,default="7GB")
     parser.add_argument("--max_gpu2_memory",type=str,default="0GB")
     parser.add_argument("--max_cpu_memory",type=str,default='0GB')
@@ -177,9 +179,9 @@ def main():
         for i, prompt in enumerate(prompts, 1):
             print(f"\nPrompt {i}: {prompt}")
             print("-" * 50)
-            
+            start=time.time()
             response, gen_time = inference.generate_response(prompt)
-            
+            print(time.time()-start)
             # print(f"Response: {response}")
             print(f"Generation time: {gen_time:.2f} seconds")
             print("\nMemory usage after generation:")
