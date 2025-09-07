@@ -42,10 +42,11 @@ class AccelerateOffloadInference:
             max_gpu_memory = "0GB"
         self.text_streamer=TextStreamer(self.tokenizer,skip_prompt=True,skip_special_tokens=True)
         bnb_config=BitsAndBytesConfig(
-            load_in_8bit=True,
-            # bnb_4bit_compute_dtype=torch.bfloat16,
-            # bnb_4bit_use_double_quant=True,
-            bnb_8bit_quant_type='nf4',
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type='nf4',
+            
             llm_int8_enable_fp32_cpu_offload=True
         )
         self.model = AutoModelForCausalLM.from_pretrained(
@@ -57,12 +58,13 @@ class AccelerateOffloadInference:
             offload_folder=self.nvme_path,
             offload_state_dict=True,
             low_cpu_mem_usage=True,
-            # quantization_config=bnb_config,
+            quantization_config=bnb_config,
             # attn_implementation="sdpa",
-            use_cache=True
+            use_cache=True,
+            # llm_int8_enable_fp32_cpu_offload=True
             # attn_implementation="eager"
         )
-        self.model.gradient_checkpointing_enable=True
+        # self.model.gradient_checkpointing_enable=True
         self.model.eval()
         print("Model loaded successfully with Accelerate!")
         if hasattr(self.model, 'hf_device_map'):
@@ -85,7 +87,7 @@ class AccelerateOffloadInference:
             }
         ]
         inputs = self.tokenizer(
-            # self.tokenizer.apply_chat_template(message,tokenize=False),
+            self.tokenizer.apply_chat_template(message,tokenize=False),
             prompt,
             return_tensors="pt",
             truncation=True,
@@ -106,9 +108,9 @@ class AccelerateOffloadInference:
                 top_p=top_p,
                 top_k=top_k,
                 pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=None
-                # eos_token_id=self.tokenizer.eos_token_id,
-                # use_cache=True
+                # eos_token_id=None,
+                eos_token_id=self.tokenizer.eos_token_id,
+                use_cache=True
             )
             
             generation_time = time.time() - start_time
