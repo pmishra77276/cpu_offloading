@@ -5,3 +5,4 @@ bitsandbytes
 fastapi
 uvicorn
 psutil
+matplotlib
