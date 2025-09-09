@@ -92,7 +92,6 @@ async def infer_stream(request: PromptRequest):
     )
 
     async def event_generator():
-        loop = asyncio.get_event_loop()
         for token in streamer:
             yield f"data: {token}\n\n"
             await asyncio.sleep(0)
