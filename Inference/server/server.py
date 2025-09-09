@@ -5,9 +5,6 @@ from fastapi.responses import StreamingResponse
 from inference import AccelerateOffloadInference
 from functools import lru_cache
 import asyncio
-# ---------------------------
-# Initialize FastAPI app
-# ---------------------------
 app = FastAPI(title="LLM Inference API")
 
 print("🚀 Booting inference engine...")
@@ -16,8 +13,6 @@ class PromptRequest(BaseModel):
     top_p: float = 0.95
     top_k: int = 50
     do_sample: bool = True
-
-    # New params (all optional)
     model: str | None = None
     max_gpu1_memory: str | None = None
     max_gpu2_memory: str | None = None
@@ -34,12 +29,7 @@ def get_inference(config):
         inf.load_model()
         model_cache[key] = inf
     return model_cache[key]
-
-# ---------------------------
-# API Routes
-# ---------------------------
 @app.post("/infer")
-# @app.post("/infer")
 async def infer(request: PromptRequest):
     config = {
         "nvme_path": request.nvme_path or "/offload_nvm",
@@ -104,17 +94,11 @@ async def infer_stream(request: PromptRequest):
 
     async def event_generator():
         loop = asyncio.get_event_loop()
-        for token in streamer:  # HuggingFace streamer yields tokens one by one
-            # Format as SSE so curl/browser prints immediately
+        for token in streamer:
             yield f"data: {token}\n\n"
-            await asyncio.sleep(0)  # let event loop breathe
+            await asyncio.sleep(0)
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
-# ---------------------------
-# Run with Uvicorn
-# ---------------------------
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=1147)
