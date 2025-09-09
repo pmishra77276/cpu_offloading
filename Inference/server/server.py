@@ -3,7 +3,6 @@ from pydantic import BaseModel
 import uvicorn
 from fastapi.responses import StreamingResponse
 from inference import AccelerateOffloadInference
-from functools import lru_cache
 import asyncio
 app = FastAPI(title="LLM Inference API")
 
