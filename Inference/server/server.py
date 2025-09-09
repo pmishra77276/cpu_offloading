@@ -90,13 +90,11 @@ async def infer_stream(request: PromptRequest):
         top_k=request.top_k,
         do_sample=request.do_sample,
     )
-
     async def event_generator():
         for token in streamer:
             yield f"data: {token}\n\n"
             await asyncio.sleep(0)
         yield "data: [DONE]\n\n"
-
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=1147)
